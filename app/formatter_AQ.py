@@ -48,6 +48,26 @@ import numpy as np
 _KEEP_COLS = ["Total", "Target", "Conc.", "Positives"]
 
 
+_TIDY_COLUMNS = {"Source_File", "Sample", "Well", "Target", "Total", "Positives"}
+
+
+def _read_tidy(path):
+    """Try to read `path` as an already-formatted/tidy table (header on the
+    very first row). Returns the DataFrame if it looks tidy, else None."""
+    ext = os.path.splitext(path)[1].lower()
+    try:
+        if ext in (".xlsx", ".xls"):
+            df = pd.read_excel(path, header=0)
+        else:
+            df = pd.read_csv(path, header=0)
+    except Exception:
+        return None
+
+    if _TIDY_COLUMNS.issubset(set(df.columns)):
+        return df
+    return None
+
+
 def _read_raw(path):
     """Read a raw AbsoluteQ export (csv or xlsx) as a DataFrame, using the
     2nd row (index 1) as the header, matching the export layout."""
@@ -83,8 +103,27 @@ def format_file(path):
     rows (one per Target/Target.1 pair), which is exactly what we want
     for same-well Internal Controls.
     """
-    df_raw = _read_raw(path)
     source_name = os.path.basename(path)
+
+    # If this file is already a tidy/formatted table (e.g. the output of
+    # run_concat, or a previous format_file run saved and re-uploaded),
+    # just normalize/return it as-is instead of trying to parse it as a
+    # raw AbsoluteQ export.
+    tidy_df = _read_tidy(path)
+    if tidy_df is not None:
+        result = tidy_df.copy()
+        # Conc column may be named "Conc" already; keep optional columns safe
+        for col in ["Run_name", "Conc"]:
+            if col not in result.columns:
+                result[col] = pd.NA
+        result["Sample"] = result["Sample"].astype(str).str.strip()
+        result["Target"] = result["Target"].astype(str).str.strip()
+        result["Total"] = pd.to_numeric(result["Total"], errors="coerce")
+        result["Positives"] = pd.to_numeric(result["Positives"], errors="coerce")
+        keep = ["Source_File", "Run_name", "Sample", "Well", "Target", "Total", "Positives", "Conc"]
+        return result[keep]
+
+    df_raw = _read_raw(path)
 
     # Drop fully-empty helper rows where there's no Well at all (these are
     # either pure "Group" header rows or "ghost" unprocessed-well rows
