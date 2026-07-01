@@ -42,6 +42,11 @@ app_ui = ui.page_fluid(
         accept=[".csv", ".xlsx"],
         multiple=True
     ),
+    ui.input_checkbox(
+        "normalize",
+        "Normalize by NTC/NC (subtract NTC or NC positives from each sample per target)",
+        value=True
+    ),
     ui.input_action_button("run_analysis", "Run analysis"),
     ui.download_button("download_analysis", "Download detailed result"),
 
@@ -153,6 +158,7 @@ def server(input, output, session):
                     input_path_or_dir=batch_dir,
                     output_dir=analysis_dir,
                     filename=output_filename,
+                    normalize=bool(input.normalize()),
                 )
 
                 analysis_file.set(output_path)
