@@ -131,10 +131,18 @@ def format_file(path):
     if "Well" not in df_raw.columns:
         raise ValueError(f"'{source_name}': unexpected file layout (no 'Well' column found).")
 
-    # A genuine data row always has a Well AND a Total. Group-header rows
-    # have neither; "ghost" rows (well listed but never run) have a Well
-    # but no Total -> both are dropped here.
-    df_data = df_raw[df_raw["Well"].notna() & df_raw["Total"].notna()].copy()
+    # A genuine data row always has a Well AND a Total. Filter out:
+    #  - Group-header rows (no Well, no Total)
+    #  - "ghost" rows (Well present but no Total -> well not processed)
+    #  - "Average" summary rows (Well == "Average", inserted between groups)
+    #  - Placeholder rows where Sample is NaN or the literal "0"
+    df_data = df_raw[
+        df_raw["Well"].notna() &
+        df_raw["Total"].notna() &
+        (df_raw["Well"].astype(str).str.strip().str.upper() != "AVERAGE") &
+        df_raw["Sample"].notna() &
+        (df_raw["Sample"].astype(str).str.strip() != "0")
+    ].copy()
 
     suffixes = _channel_blocks(df_raw)
 
@@ -150,6 +158,15 @@ def format_file(path):
         block = df_data[df_data[target_col].notna()].copy()
         if block.empty:
             continue
+
+        # If this secondary channel has the same Target values as the
+        # primary channel (e.g. FGFR3-IC reported on both FAM and VIC),
+        # skip it to avoid duplicating rows.
+        if suf != "" and "Target" in df_data.columns:
+            primary = df_data.loc[block.index, "Target"].astype(str).values
+            secondary = block[target_col].astype(str).values
+            if list(primary) == list(secondary):
+                continue
 
         out = pd.DataFrame({
             "Source_File": source_name,
