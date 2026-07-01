@@ -109,6 +109,13 @@ def _normalize_by_ntc(df_long):
     return df
 
 
+def _skip_normalization(df_long):
+    """No-op normalization: Positives_norm == Positives (no NTC/NC subtraction)."""
+    df = df_long.copy()
+    df["Positives_norm"] = df["Positives"]
+    return df
+
+
 def _build_ic_lookup(df_norm, assay, ic_target):
     """
     Build a Sample -> (Positives_norm, Total, Source_File) lookup for the
@@ -152,16 +159,19 @@ def _classify(total, ic_positives, mut_positives, fa):
     return True, True, fa_valid, ("Positive" if is_positive else "Negative")
 
 
-def analyze(df_long):
+def analyze(df_long, normalize=True):
     """
     Run the full business-logic pipeline on a tidy long-format DataFrame
     (as produced by formatter_AQ.format_files) and return the detailed
     per-(Sample, Assay) result DataFrame.
+
+    normalize: if True (default), subtract NTC/NC Positives per target/run.
+               if False, raw Positives are used directly.
     """
     if df_long.empty:
         raise ValueError("No data rows to analyze.")
 
-    df_norm = _normalize_by_ntc(df_long)
+    df_norm = _normalize_by_ntc(df_long) if normalize else _skip_normalization(df_long)
 
     # Pre-build IC lookups for the two "separate well" assays which share
     # a single FGFR3-IC pool across the whole uploaded dataset.
@@ -225,7 +235,7 @@ def analyze(df_long):
     return result_df
 
 
-def run_analysis(input_path_or_dir, output_dir, filename=None):
+def run_analysis(input_path_or_dir, output_dir, filename=None, normalize=True):
     """
     Entry point used by the Shiny app.
 
@@ -257,7 +267,7 @@ def run_analysis(input_path_or_dir, output_dir, filename=None):
     if df_long.empty:
         raise ValueError("No usable data rows found in the input file(s).")
 
-    result_df = analyze(df_long)
+    result_df = analyze(df_long, normalize=normalize)
     if result_df.empty:
         raise ValueError("No recognized assay targets found in the input file(s).")
 
